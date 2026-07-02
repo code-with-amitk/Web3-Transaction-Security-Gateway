@@ -1,0 +1,130 @@
+services:
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    container_name: w3sg-anvil
+    entrypoint: ["anvil", "--host", "0.0.0.0", "--chain-id", "31337"]
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test: ["CMD", "cast", "block-number", "--rpc-url", "http://localhost:8545"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: w3sg-postgres
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+      POSTGRES_DB: gateway
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d gateway"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    container_name: w3sg-redpanda
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://localhost:19092
+    ports:
+      - "19092:9092"
+      - "9644:9644"
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redpanda-init:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.2.4
+    container_name: w3sg-redpanda-init
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        rpk topic create gateway.audit --brokers redpanda:9092 || true
+        echo "topic ready"
+    restart: "no"
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: w3sg-prometheus
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - gateway
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: w3sg-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+  gateway:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile
+    container_name: w3sg-gateway
+    environment:
+      HTTP_ADDR: ":8080"
+      ETH_RPC_URL: http://anvil:8545
+      CHAIN_ID: "31337"
+      SIGNER_PRIVATE_KEY: "0xac0974bec39a17e36ba4a6a679b5249696125143991808455148b4754e44583"
+      POSTGRES_DSN: postgres://gateway:gateway@postgres:5432/gateway?sslmode=disable
+      KAFKA_BROKER: redpanda:9092
+      KAFKA_TOPIC: gateway.audit
+      ENABLE_KAFKA: "true"
+      ENABLE_POSTGRES: "true"
+      ENABLE_AUTH: "false"
+      SPENDING_LIMIT_WEI: "1000000000000000000"
+      INSPECT_THRESHOLD_WEI: "500000000000000000"
+      DENYLIST_ADDRESSES: "0x000000000000000000000000000000000000dead"
+    ports:
+      - "8080:8080"
+    depends_on:
+      anvil:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  grafana_data:

@@ -1,0 +1,27 @@
+replicaCount: 2
+
+image:
+  repository: web3-gateway
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+config:
+  ethRpcUrl: "http://anvil.ethereum.svc:8545"
+  chainId: "31337"
+  enableAuth: "true"
+  enablePostgres: "true"
+  enableKafka: "true"
+  spendingLimitWei: "1000000000000000000"
+  inspectThresholdWei: "500000000000000000"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

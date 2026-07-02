@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "gateway.name" . }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "gateway.name" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "gateway.name" . }}
+    spec:
+      containers:
+        - name: gateway
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: HTTP_ADDR
+              value: ":8080"
+            - name: ETH_RPC_URL
+              value: {{ .Values.config.ethRpcUrl | quote }}
+            - name: CHAIN_ID
+              value: {{ .Values.config.chainId | quote }}
+            - name: ENABLE_AUTH
+              value: {{ .Values.config.enableAuth | quote }}
+            - name: ENABLE_POSTGRES
+              value: {{ .Values.config.enablePostgres | quote }}
+            - name: ENABLE_KAFKA
+              value: {{ .Values.config.enableKafka | quote }}
+            - name: SPENDING_LIMIT_WEI
+              value: {{ .Values.config.spendingLimitWei | quote }}
+            - name: INSPECT_THRESHOLD_WEI
+              value: {{ .Values.config.inspectThresholdWei | quote }}
+            - name: POSTGRES_DSN
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-secrets
+                  key: postgres-dsn
+            - name: SIGNER_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-secrets
+                  key: signer-private-key
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: gateway-secrets
+                  key: jwt-secret
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway.fullname" . }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app.kubernetes.io/name: {{ include "gateway.name" . }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      name: http

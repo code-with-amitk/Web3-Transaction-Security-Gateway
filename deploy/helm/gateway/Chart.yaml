@@ -1,0 +1,6 @@
+apiVersion: v2
+name: web3-gateway
+description: Web3 Transaction Security Gateway — policy enforcement proxy for Ethereum
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
