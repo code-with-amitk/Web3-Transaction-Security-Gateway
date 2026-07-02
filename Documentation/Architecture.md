@@ -1,14 +1,16 @@
 - [Problem statement](#ps)
 - [High-level architecture](#hla)
--- [End-to-end request lifecycle](#end-to-end-request-lifecycle)
+  - [End-to-end request lifecycle](#end-to-end-request-lifecycle)
 
 # Architecture — Web3 Transaction Security Gateway
 
-- Web3 Transaction Security Gateway is a Custodian for Assets. [What is Custodian](https://code-with-amitk.github.io/BlockChain/)
-- Services
--- A Go gateway on the hot path
--- Python services for risk analytics and operator workflows
--- Shared infrastructure for audit, policy, and observability. 
+Web3 Transaction Security Gateway is a Custodian for Assets. [What is Custodian](https://code-with-amitk.github.io/BlockChain/)
+
+Services
+
+- A Go gateway on the hot path
+- Python services for risk analytics and operator workflows
+- Shared infrastructure for audit, policy, and observability. 
 
 <a href=ps></a>
 ## Problem statement
