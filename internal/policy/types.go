@@ -26,9 +26,9 @@ var actionRank = map[Action]int{
 
 // Result captures one policy's decision on a transaction.
 type Result struct {
-	Policy  string `json:"policy"`
-	Action  Action `json:"action"`
-	Reason  string `json:"reason"`
+	Policy  string            `json:"policy"`
+	Action  Action            `json:"action"`
+	Reason  string            `json:"reason"`
 	Details map[string]string `json:"details,omitempty"`
 }
 
@@ -39,7 +39,8 @@ type Decision struct {
 	Results []Result `json:"results"`
 }
 
-// Policy evaluates a transaction and returns a single Result.
+// This is a interface
+// It declares 2 functions to be implemeted by concrete types.
 type Policy interface {
 	Name() string
 	Evaluate(t *tx.Transaction) Result

@@ -1,16 +1,16 @@
 - [Problem statement](#ps)
 - [High-level architecture](#hla)
-  - [End-to-end request lifecycle](#end-to-end-request-lifecycle)
+- [End-to-end request lifecycle](#end-to-end-request-lifecycle)
 
 # Architecture — Web3 Transaction Security Gateway
 
-Web3 Transaction Security Gateway is a Custodian for Assets. [What is Custodian](https://code-with-amitk.github.io/BlockChain/)
+- Web3 Transaction Security Gateway is a Custodian for Assets. [What is Custodian](https://code-with-amitk.github.io/BlockChain/)
+- A Go-based **policy enforcement proxy** for Ethereum outbound transactions. Sits between wallet/treasury clients and an Ethereum RPC node, evaluates each transfer against configurable security policies, gates signing/broadcast, and emits audit events — the same architectural pattern custodians and exchanges use around hot-wallet flows.
 
-Services
-
-- A Go gateway on the hot path
-- Python services for risk analytics and operator workflows
-- Shared infrastructure for audit, policy, and observability. 
+- Services
+-- A Go gateway on the hot path
+-- Python services for risk analytics and operator workflows
+-- Shared infrastructure for audit, policy, and observability. 
 
 <a href=ps></a>
 ## Problem statement
@@ -24,15 +24,6 @@ Services
 <a href=hla></a>
 ## High-level architecture
 The system spans three application services
-
-**Go — Transaction Gateway.**
-Go has Ethereum libraries (`go-ethereum`) which we will use to communicate with etherum
-
-**Python — Risk Scoring Service (FastAPI).**
-easy to scale horizontally behind a load balancer
-
-**Python — Policy Management Dashboard (Django).**
-Policy CRUD, audit log browsing, and approval workflows are classic internal-admin problems are handled here. Celery handles async side effects (email alerts) without blocking web workers.
 
 ```
                                     ┌─────────────────────────────────────┐
@@ -69,8 +60,44 @@ Policy CRUD, audit log browsing, and approval workflows are classic internal-adm
     └────────────────────────────────────────────────────────────────────────────┘
 ```
 
+```
+                                ┌───────────────────────────────┐
+                                    Ethereum-RPC(Anvil:http://8545)
+                                    ChainId: 31337
+                                    SIGNER_PRIVATE_KEY: 0x12345
+                                └───────────────────────────────┘
+
+            ┌────────────────┐           ┌───────────────┐
+            go-gateway:8080               postgres:5432
+            └────────────────┘           └───────────────┘ 
+
+                                        ┌──────────────────────┐ 
+                                         Kafka Broker(redpanda)
+                                         localhost:19092
+                                         Topic:gateway.audit
+                                        └──────────────────────┘
+
+```
+### Go — Transaction Gateway
+Go has Ethereum libraries (`go-ethereum`) which we will use to communicate with etherum
+
+### Python — Risk Scoring Service (FastAPI)
+easy to scale horizontally behind a load balancer. Scoring is **rule-based, not ML**. Each signal produces a sub-score in `[0.0, 1.0]`;
+
+| Signal | Source | Intuition |
+|--------|--------|-----------|
+| **Velocity** | Redis — tx count from `from` in last 60 minutes | Burst activity may indicate compromise or script abuse |
+| **Amount** | Postgres history — z-score vs. mean/std for `from` | Unusually large transfer relative to past behavior |
+| **Denylist** | Postgres denylist table | Binary hit on `to` address |
+| **New address** | Postgres — first time `from` → `to` | First-time recipients are higher risk in treasury ops |
+| **Time of day** | Clock — 00:00–05:00 UTC | Mild elevation for off-hours activity |
+
+### Python — Policy Management Dashboard (Django)
+- Policy CRUD, audit log browsing, and approval workflows are classic internal-admin problems are handled here. Celery handles async side effects (email alerts) without blocking web workers.
+- Operators view and edit policies (spending limits, denylists, velocity caps), browse the audit log with filters, work the INSPECT queue (approve/reject with notes), and drill into per-address risk history by calling the FastAPI `/address/{address}/history` endpoint from Django views or Celery tasks.
+
 <a href=end-to-end-request-lifecycle></a>
-### End-to-end request lifecycle
+## End-to-end request lifecycle
 
 When a client submits a transaction, the Go gateway remains the single entry point and the authority on whether anything reaches the chain. The enriched lifecycle looks like this:
 

@@ -2,9 +2,14 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/amit/Web3-Transaction-Security-Gateway/internal/logging"
+	"github.com/joho/godotenv"
 )
 
 // Config holds runtime configuration loaded from environment variables.
@@ -22,25 +27,32 @@ type Config struct {
 	KafkaBrokers []string
 	KafkaTopic   string
 
-	JWTSecret     string
-	JWTIssuer     string
-	JWTAudience   string
-	JWTExpiry     time.Duration
-	EnableAuth    bool
-	EnableKafka   bool
+	JWTSecret      string
+	JWTIssuer      string
+	JWTAudience    string
+	JWTExpiry      time.Duration
+	EnableAuth     bool
+	EnableKafka    bool
 	EnablePostgres bool
 
 	// Policy defaults (overridden by DB in a full deployment).
-	SpendingLimitWei       string
-	InspectThresholdWei    string
-	DenylistAddresses      []string
+	SpendingLimitWei    string
+	InspectThresholdWei string
+	DenylistAddresses   []string
 }
 
+// Load reads configuration from the environment. It loads a .env file first (if present),
+// then applies process environment variables. Values already set in the shell are not
+// overwritten by the .env file (godotenv default). Missing keys fall back to defaults.
 func Load() (*Config, error) {
+	if err := loadEnvFile(); err != nil {
+		return nil, err
+	}
+
 	cfg := &Config{
 		HTTPAddr:            env("HTTP_ADDR", ":8080"),
 		EthRPCURL:           env("ETH_RPC_URL", "http://localhost:8545"),
-		SignerPrivateKeyHex: env("SIGNER_PRIVATE_KEY", "0xac0974bec39a17e36ba4a6a679b5249696125143991808455148b4754e44583"),
+		SignerPrivateKeyHex: env("SIGNER_PRIVATE_KEY", logging.DefaultAnvilSignerKey),
 		ChainID:             envInt64("CHAIN_ID", 31337),
 		PostgresDSN:         env("POSTGRES_DSN", "postgres://gateway:gateway@localhost:5432/gateway?sslmode=disable"),
 		KafkaBrokers:        []string{env("KAFKA_BROKER", "localhost:19092")},
@@ -52,11 +64,43 @@ func Load() (*Config, error) {
 		EnableAuth:          envBool("ENABLE_AUTH", false),
 		EnableKafka:         envBool("ENABLE_KAFKA", true),
 		EnablePostgres:      envBool("ENABLE_POSTGRES", true),
-		SpendingLimitWei:    env("SPENDING_LIMIT_WEI", "1000000000000000000"),   // 1 ETH
-		InspectThresholdWei: env("INSPECT_THRESHOLD_WEI", "500000000000000000"), // 0.5 ETH
+		SpendingLimitWei:    env("SPENDING_LIMIT_WEI", "1000000000000000000"),
+		InspectThresholdWei: env("INSPECT_THRESHOLD_WEI", "500000000000000000"),
 		DenylistAddresses:   envSlice("DENYLIST_ADDRESSES", []string{"0x000000000000000000000000000000000000dead"}),
 	}
 	return cfg, nil
+}
+
+// LoadDotEnv loads variables from a dotenv file into the process environment.
+// Safe to call from binaries that do not use config.Load (e.g. cmd/client).
+func LoadDotEnv() error {
+	return loadEnvFile()
+}
+
+// loadEnvFile loads key=value pairs from a dotenv file into the process environment.
+// Path is taken from the ENV_FILE shell variable, default ".env".
+// A missing file is ignored so production can rely on injected env vars only.
+// Precedence: export VAR=... in shell > .env > defaults in config.go
+func loadEnvFile() error {
+	path := os.Getenv("ENV_FILE")
+	if path == "" {
+		path = ".env"
+	}
+	if !filepath.IsAbs(path) {
+		if abs, err := filepath.Abs(path); err == nil {
+			path = abs
+		}
+	}
+
+	if err := godotenv.Load(path); err != nil {
+		if os.IsNotExist(err) {
+			slog.Debug("env file not found, using environment and defaults", "path", path)
+			return nil
+		}
+		return fmt.Errorf("load env file %s: %w", path, err)
+	}
+	slog.Debug("loaded env file", "path", path)
+	return nil
 }
 
 func env(key, fallback string) string {

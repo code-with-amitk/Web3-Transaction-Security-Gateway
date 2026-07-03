@@ -1,10 +1,17 @@
 # Web3 Transaction Security Gateway
 
-- A Custodian service that sits between user and the Blockchain/Vault and enforces policies same as Zero Trust Forward proxy ie provides AUTHORIZATION
-- Custodians, exchanges, and institutional wallets do not let end-user devices talk directly to an Ethereum node when moving funds. Outgoing transactions pass through policy-controlled signing infrastructure
+This is a Custodian service,
+A Go-based **policy enforcement proxy** for Ethereum outbound transactions. Sits between wallet/treasury clients and an Ethereum RPC node, evaluates each transfer against configurable security policies, gates signing/broadcast, and emits audit events — the same architectural pattern custodians and exchanges use around hot-wallet flows.
 
 ## Documentation
 - [Architecture](./Documentation/Architecture.md)
+
+**Web3 gateway Server**
+- [Starting Web3 Gateway](./Documentation/Start.md)
+- [Code Walk](./Documentation/Server_Code_Flow.md)
+
+**Client**
+- [Client Run Samples](./Documentation/Sample_Client_Runs.md)
 
 ### Start
 - [Start the Custodian](./Documentation/Start.md)

@@ -14,6 +14,7 @@ import (
 	"github.com/amit/Web3-Transaction-Security-Gateway/internal/config"
 	"github.com/amit/Web3-Transaction-Security-Gateway/internal/ethereum"
 	"github.com/amit/Web3-Transaction-Security-Gateway/internal/events"
+	"github.com/amit/Web3-Transaction-Security-Gateway/internal/logging"
 	"github.com/amit/Web3-Transaction-Security-Gateway/internal/policy"
 	"github.com/amit/Web3-Transaction-Security-Gateway/internal/store"
 	"github.com/go-chi/chi/v5"
@@ -21,7 +22,7 @@ import (
 )
 
 func main() {
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo})))
+	logging.SetupDefault()
 
 	cfg, err := config.Load()
 	if err != nil {
@@ -44,22 +45,28 @@ func main() {
 	defer ethClient.Close()
 	slog.Info("connected to ethereum", "rpc", cfg.EthRPCURL, "signer", ethClient.SignerAddress().Hex())
 
+	// Spending Limit : 1 ETH = 1e18 wei
 	spendingLimit, err := policy.NewSpendingLimit(cfg.SpendingLimitWei)
 	if err != nil {
 		slog.Error("spending limit policy", "err", err)
 		os.Exit(1)
 	}
+
+	// Inspection threshold: .5 ETH
 	inspectThreshold, err := policy.NewInspectThreshold(cfg.InspectThresholdWei)
 	if err != nil {
 		slog.Error("inspect threshold policy", "err", err)
 		os.Exit(1)
 	}
+
+	// Initialize policy engine
 	engine := policy.NewEngine(
 		policy.NewDenylist(cfg.DenylistAddresses),
 		spendingLimit,
 		inspectThreshold,
 	)
 
+	// Connect to postgres
 	var st *store.Store
 	if cfg.EnablePostgres {
 		st, err = store.New(ctx, cfg.PostgresDSN)
@@ -70,16 +77,19 @@ func main() {
 		defer st.Close()
 	}
 
+	// Connect to Kafka(RedPanda)
 	var pub events.AuditPublisher = events.NoopPublisher{}
 	if cfg.EnableKafka {
 		pub = events.NewPublisher(cfg.KafkaBrokers, cfg.KafkaTopic)
 		defer func() { _ = pub.Close() }()
 	}
 
+	// Create bundle
 	handler := api.NewHandler(engine, ethClient, st, pub, cfg.EnablePostgres, cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience)
 
 	jwtValidator := auth.NewValidator(cfg.JWTSecret, cfg.JWTIssuer, cfg.JWTAudience)
 
+	// Initialize chi router
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"strings"
 
@@ -24,24 +25,35 @@ type Client struct {
 
 // New connects to an Ethereum JSON-RPC endpoint and loads the demo signer key.
 func New(ctx context.Context, rpcURL, privateKeyHex string, chainID int64) (*Client, error) {
+
+	// Connect ethclient to EthRPCURL: http://localhost:8545
 	rpc, err := ethclient.DialContext(ctx, rpcURL)
 	if err != nil {
 		return nil, fmt.Errorf("dial eth rpc: %w", err)
 	}
 
-	keyHex := strings.TrimPrefix(privateKeyHex, "0x")
-	key, err := crypto.HexToECDSA(keyHex)
+	keyHex, err := normalizePrivateKeyHex(privateKeyHex)
 	if err != nil {
 		return nil, fmt.Errorf("parse signer key: %w", err)
 	}
+	key, err := crypto.HexToECDSA(keyHex)
+	if err != nil {
+		return nil, fmt.Errorf("parse signer key: invalid secp256k1 value: %w", err)
+	}
 
 	cid := big.NewInt(chainID)
-	return &Client{
+	client := &Client{
 		rpc:        rpc,
 		signerKey:  key,
 		signerAddr: crypto.PubkeyToAddress(key.PublicKey),
 		chainID:    cid,
-	}, nil
+	}
+	slog.Info("ethereum client initialized",
+		"rpc", rpcURL,
+		"chain_id", chainID,
+		"signer", client.signerAddr.Hex(),
+	)
+	return client, nil
 }
 
 func (c *Client) SignerAddress() common.Address {

@@ -1,8 +1,26 @@
-## Start the stack
+- [Server](#server)
+    - [Docker](#in-docker)
+    - [Locally](#locally-without-docker-for-the-binary)
+- [Client](#client)
+
+<a href=server></a>
+### Server
+
+<a href=in-docker></a>
+#### In Docker
+The root `docker-compose.yml` defines the full boundary for the current gateway:
+- Anvil (local Ethereum node)
+- Postgres
+- Redpanda (Kafka-compatible broker)
+- a one-shot topic initializer
+- Go gateway binary (built from `deploy/docker/Dockerfile`)
+- Prometheus
+- Grafana.
 
 ```bash
-docker compose up -d --build
-```
+docker compose up -d --build    //Build images and start every container in detached mode
+docker compose ps               //Confirm containers are running
+docker compose up               //Start containers, images should exist
 
 | Service    | URL |
 |------------|-----|
@@ -12,32 +30,34 @@ docker compose up -d --build
 | Grafana     | http://localhost:3000 (admin/admin) |
 | Postgres    | localhost:5432 (gateway/gateway) |
 | Redpanda    | localhost:19092 |
+```
 
 Verify health:
-
 ```bash
 curl -s http://localhost:8080/health | jq
 ```
 
-## Running the gateway locally (without Docker for the binary)
-
-Start infra only:
-
-```bash
-docker compose up -d anvil postgres redpanda redpanda-init
-```
+<a href=locally-without-docker-for-the-binary></a>
+### Locally (without Docker for the binary)
 
 Run gateway:
-
 ```bash
 export ETH_RPC_URL=http://localhost:8545
 export POSTGRES_DSN=postgres://gateway:gateway@localhost:5432/gateway?sslmode=disable
 export KAFKA_BROKER=localhost:19092
 go run ./cmd/gateway
 ```
-
 Or: `make build && ./bin/gateway`
 
+
+<a href=client></a>
+## Client
+```
+make build-client
+./bin/client -scenario allow
+OR
+./bin/client -scenario all | block-limit | block-denylist
+```
 
 ## End-to-end walkthrough: ALLOW, BLOCK, INSPECT
 
